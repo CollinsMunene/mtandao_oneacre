@@ -14,7 +14,6 @@ import 'package:mtandao_oneacre/widgets/wificard.dart';
 import 'package:network_info_plus/network_info_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:sim_data/sim_data.dart';
-import 'package:telephony/telephony.dart';
 
 class HomeView extends StatefulWidget {
   const HomeView({super.key});
@@ -24,23 +23,22 @@ class HomeView extends StatefulWidget {
 }
 
 class _HomeViewState extends State<HomeView> {
-  bool _isLoading = true;
   SimData? _simData;
   String _dataType = 'unknown';
   String _networkType = 'unknown';
-  ConnectivityResult _connectionStatus = ConnectivityResult.none;
   final Connectivity _connectivity = Connectivity();
   late StreamSubscription<ConnectivityResult> _connectivitySubscription;
   final NetworkInfo _networkInfo = NetworkInfo();
-  int? _mobileSignal;
-  int? _wifiSignal;
+  int _mobileSignal = 0;
+  int _wifiSignal = 0;
   int? _wifiSpeed;
-  String? _version;
   String? mobilesignalStrength;
   String? wifisignalStrength;
 
   final _internetSignal = FlutterInternetSignal();
-  DeviceInfoPlugin deviceInfo = DeviceInfoPlugin();
+  DeviceInfoPlugin deviceInfoPlugin = DeviceInfoPlugin();
+  String? _deviceData;
+
   String? wifiName;
 
   @override
@@ -48,6 +46,7 @@ class _HomeViewState extends State<HomeView> {
     super.initState();
 
     initConnectivity();
+    initPlatformState();
 
     _connectivitySubscription =
         _connectivity.onConnectivityChanged.listen(_updateConnectionStatus);
@@ -59,8 +58,67 @@ class _HomeViewState extends State<HomeView> {
     super.dispose();
   }
 
+  Future<void> initPlatformState() async {
+    String? deviceData;
+
+    try {
+      if (kIsWeb) {
+        deviceData = null;
+      } else {
+        deviceData = switch (defaultTargetPlatform) {
+          TargetPlatform.android =>
+            _readAndroidBuildData(await deviceInfoPlugin.androidInfo),
+          TargetPlatform.iOS => null,
+          TargetPlatform.linux => null,
+          TargetPlatform.macOS =>
+            _readMacOsDeviceInfo(await deviceInfoPlugin.macOsInfo),
+          TargetPlatform.windows =>
+            _readWindowsDeviceInfo(await deviceInfoPlugin.windowsInfo),
+          TargetPlatform.fuchsia => <String, dynamic>{
+              'Error:': 'Fuchsia platform isn\'t supported'
+            },
+        } as String?;
+      }
+    } on PlatformException {
+      deviceData = 'Error: Failed to get platform version';
+    }
+
+    if (!mounted) return;
+
+    setState(() {
+      _deviceData = deviceData;
+    });
+  }
+
+  String _readAndroidBuildData(AndroidDeviceInfo build) {
+    return build.display;
+  }
+
+  String _readWindowsDeviceInfo(WindowsDeviceInfo data) {
+    print('W');
+    print(data);
+    return data.deviceId;
+  }
+
+  String? _readMacOsDeviceInfo(MacOsDeviceInfo data) {
+    return data.systemGUID;
+  }
+
   Future<void> initConnectivity() async {
     await AndroidFlutterWifi.init();
+    var locationStatus = await Permission.location.status;
+    var status = await Permission.phone.status;
+    if (!status.isGranted) {
+      bool isGranted = await Permission.phone.request().isGranted;
+      if (!isGranted) return;
+    }
+
+    if (locationStatus.isDenied) {
+      await Permission.locationWhenInUse.request();
+    }
+    if (await Permission.location.isRestricted) {
+      openAppSettings();
+    }
 
     late ConnectivityResult result;
     try {
@@ -79,7 +137,6 @@ class _HomeViewState extends State<HomeView> {
 
   Future<void> _updateConnectionStatus(ConnectivityResult result) async {
     if (result == ConnectivityResult.mobile) {
-      _getPlatformVersion();
       _getInternetSignal();
       NetworkStatus networkStatus =
           await ConnectionNetworkType().currentNetworkStatus();
@@ -111,19 +168,9 @@ class _HomeViewState extends State<HomeView> {
       });
       initMobileNumberState();
     } else if (result == ConnectivityResult.wifi) {
-      var locationStatus = await Permission.location.status;
-      if (locationStatus.isDenied) {
-        await Permission.locationWhenInUse.request();
-      }
-      if (await Permission.location.isRestricted) {
-        openAppSettings();
-      }
-
       if (await Permission.location.isGranted) {
-        _getPlatformVersion();
         _getInternetSignal();
         wifiName = await _networkInfo.getWifiName();
-        print('wifiName $wifiName');
       }
 
       setState(() {
@@ -139,22 +186,8 @@ class _HomeViewState extends State<HomeView> {
     }
   }
 
-  Future<void> _getPlatformVersion() async {
-    try {
-      // _version = await _internetSignal.getPlatformVersion();
-
-      AndroidDeviceInfo androidInfo = await deviceInfo.androidInfo;
-      print(androidInfo);
-      _version = androidInfo.display;
-    } on PlatformException {
-      if (kDebugMode) print('Error get Android version.');
-      _version = null;
-    }
-    setState(() {});
-  }
-
   Future<void> _getInternetSignal() async {
-    _getPlatformVersion();
+    // _getPlatformVersion();
     int? mobile;
     int? wifi;
     int? wifiSpeed;
@@ -167,19 +200,17 @@ class _HomeViewState extends State<HomeView> {
 
       // Determine WiFi signal strength
 
-      wstrength = await _getStrengthAsString(wifi!);
-      print("here");
-      print(wstrength);
+      wstrength = await _getStrengthAsString(wifi ?? 0);
 
       // Determine mobile signal strength
 
-      mstrength = await _getStrengthAsString(mobile!);
+      mstrength = await _getStrengthAsString(mobile ?? 0);
     } on PlatformException {
       if (kDebugMode) print('Error get internet signal.');
     }
     setState(() {
-      _mobileSignal = mobile;
-      _wifiSignal = wifi;
+      _mobileSignal = mobile ?? 0;
+      _wifiSignal = wifi ?? 0;
       _wifiSpeed = wifiSpeed;
       wifisignalStrength = wstrength;
       mobilesignalStrength = mstrength;
@@ -207,7 +238,6 @@ class _HomeViewState extends State<HomeView> {
   Future<void> getWifiName() async {
     try {
       wifiName = await _networkInfo.getWifiBSSID();
-      print('WiFi Name: $wifiName');
     } on PlatformException catch (e) {
       print('Failed to get WiFi name: $e');
       wifiName = null;
@@ -220,21 +250,14 @@ class _HomeViewState extends State<HomeView> {
     SimData simData;
 
     try {
-      var status = await Permission.phone.status;
-      if (!status.isGranted) {
-        bool isGranted = await Permission.phone.request().isGranted;
-        if (!isGranted) return;
-      }
       simData = await SimDataPlugin.getSimData();
       // interfaces = simData.cards;
       setState(() {
-        _isLoading = false;
         _simData = simData;
       });
     } catch (e) {
       debugPrint(e.toString());
       setState(() {
-        _isLoading = false;
         _simData = null;
       });
     }
@@ -269,10 +292,10 @@ class _HomeViewState extends State<HomeView> {
                     ],
                   ),
                   const SizedBox(height: 30),
-                  Text('ID: $_version \n'),
-                  Text('Mobile signal: ${_mobileSignal ?? '--'} [dBm]\n'),
+                  Text('ID: ${_deviceData} \n'),
                   Text('Wifi signal: ${_wifiSignal ?? '--'} [dBm]\n'),
                   Text('Wifi speed: ${_wifiSpeed ?? '--'} Mbps\n'),
+                  Text('Mobile signal: ${_mobileSignal ?? '--'} [dBm]\n'),
                   ElevatedButton(
                     onPressed: _getInternetSignal,
                     child: const Text('Update internet signal'),

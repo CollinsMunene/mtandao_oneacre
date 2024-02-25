@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 class NetworkCard extends StatelessWidget {
   final String? carrierName;
   final String? displayName;
-  final int? mobileSignal;
+  final int mobileSignal;
   final String? signalStrength;
 
   const NetworkCard(
@@ -106,7 +106,7 @@ class NetworkCard extends StatelessWidget {
 }
 
 class StrengthCurveCircle extends StatelessWidget {
-  final int? strengthInDBM; // Strength value in dBm
+  final int strengthInDBM; // Strength value in dBm
   final String? strengthInType;
 
   StrengthCurveCircle(
@@ -115,8 +115,9 @@ class StrengthCurveCircle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Normalize the strength value to a range between 0 and 1
+
     final double normalizedStrength =
-        (strengthInDBM! + 200) / 200; // Range is -102 dBm to -41 dBm
+        (strengthInDBM + 200) / 200; // Range is -102 dBm to -41 dBm
     return CustomPaint(
         size: const Size(150, 150), // Adjust size according to your preference
         painter: CurveCirclePainter(
@@ -163,12 +164,14 @@ class CurveCirclePainter extends CustomPainter {
   }
 
   Color _getColorForStrength(double normalizedStrength) {
-    if (strengthInType == 'Low') {
-      return Colors.yellow; // Low to moderate signal strength
-    } else if (strengthInType == 'Moderate') {
-      return Colors.blue; // Moderate to good signal strength
+    if (strengthInType == 'Poor' || strengthInType == 'Very Poor') {
+      return Colors.red; // Low to moderate signal strength
+    } else if (strengthInType == 'Average') {
+      return Colors.yellow; // Moderate to good signal strength
+    } else if (strengthInType == 'Great' || strengthInType == 'Good') {
+      return Colors.green;
     } else {
-      return Colors.green; // Good to excellent signal strength
+      return Colors.grey; // Good to excellent signal strength
     }
   }
 }
