@@ -48,6 +48,7 @@ dependencies:
   flutter_internet_signal: ^0.0.30
   device_info_plus: ^9.1.2
 
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

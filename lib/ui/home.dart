@@ -34,10 +34,12 @@ class _HomeViewState extends State<HomeView> {
   int? _wifiSpeed;
   String? mobilesignalStrength;
   String? wifisignalStrength;
+  String? platformType = 'adndroid';
 
   final _internetSignal = FlutterInternetSignal();
   DeviceInfoPlugin deviceInfoPlugin = DeviceInfoPlugin();
   String? _deviceData;
+  
 
   String? wifiName;
 
@@ -91,12 +93,16 @@ class _HomeViewState extends State<HomeView> {
   }
 
   String _readAndroidBuildData(AndroidDeviceInfo build) {
+ 
     return build.display;
   }
 
   String _readWindowsDeviceInfo(WindowsDeviceInfo data) {
     print('W');
     print(data);
+     setState(() {
+      platformType = 'Windows';
+    });
     return data.deviceId;
   }
 
@@ -137,7 +143,7 @@ class _HomeViewState extends State<HomeView> {
 
   Future<void> _updateConnectionStatus(ConnectivityResult result) async {
     if (result == ConnectivityResult.mobile) {
-      _getInternetSignal();
+      _getMobileInternetSignal();
       NetworkStatus networkStatus =
           await ConnectionNetworkType().currentNetworkStatus();
       switch (networkStatus) {
@@ -169,7 +175,7 @@ class _HomeViewState extends State<HomeView> {
       initMobileNumberState();
     } else if (result == ConnectivityResult.wifi) {
       if (await Permission.location.isGranted) {
-        _getInternetSignal();
+        _getWindowsInternetSignal();
         wifiName = await _networkInfo.getWifiName();
       }
 
@@ -178,7 +184,7 @@ class _HomeViewState extends State<HomeView> {
         _simData = null;
       });
 
-      initMobileNumberState();
+      platformType=='Android'?? initMobileNumberState();
     } else if (result == ConnectivityResult.other) {
       // Handle other types of connections if needed
     } else if (result == ConnectivityResult.none) {
@@ -186,7 +192,35 @@ class _HomeViewState extends State<HomeView> {
     }
   }
 
-  Future<void> _getInternetSignal() async {
+  Future<void> _getWindowsInternetSignal() async {
+    // _getPlatformVersion();
+    
+    int? wifi;
+    int? wifiSpeed;
+    String? wstrength;
+    String? mstrength;
+    try {
+      wifi = await _internetSignal.getWifiSignalStrength();
+      wifiSpeed = await _internetSignal.getWifiLinkSpeed();
+
+      // Determine WiFi signal strength
+
+      wstrength = await _getStrengthAsString(wifi ?? 0);
+
+      
+    } on PlatformException {
+      if (kDebugMode) print('Error get internet signal.');
+    }
+    setState(() {
+      _mobileSignal = 0;
+      _wifiSignal = wifi ?? 0;
+      _wifiSpeed = wifiSpeed;
+      wifisignalStrength = wstrength;
+      mobilesignalStrength = mstrength;
+    });
+  }
+
+  Future<void> _getMobileInternetSignal() async {
     // _getPlatformVersion();
     int? mobile;
     int? wifi;
@@ -297,7 +331,7 @@ class _HomeViewState extends State<HomeView> {
                   Text('Wifi speed: ${_wifiSpeed ?? '--'} Mbps\n'),
                   Text('Mobile signal: ${_mobileSignal ?? '--'} [dBm]\n'),
                   ElevatedButton(
-                    onPressed: _getInternetSignal,
+                    onPressed: _getWindowsInternetSignal,
                     child: const Text('Update internet signal'),
                   ),
                   _dataType == 'WIFI'
@@ -306,7 +340,7 @@ class _HomeViewState extends State<HomeView> {
                       : SizedBox(
                           height: 10,
                         ),
-                  Container(
+                 platformType == 'Android' ? Container(
                       height: 700,
                       child: ListView.builder(
                           itemCount: _simData?.cards.length,
@@ -316,7 +350,8 @@ class _HomeViewState extends State<HomeView> {
                                 _simData?.cards[index].displayName,
                                 _mobileSignal,
                                 mobilesignalStrength);
-                          })),
+                          })) :  SizedBox( height: 10,
+                        ) ,
                 ],
               )),
         ));
